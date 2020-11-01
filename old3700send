@@ -1,4 +1,8 @@
-#!/usr/bin/python3
+#!/usr/bin/python3 -u
+#
+# CS3700, Spring 2015
+# Project 2 Starter Code
+#
 
 import sys
 import socket
@@ -11,7 +15,6 @@ MSG_SIZE = 1500
 DATA_SIZE = 1000
 TIMEOUT = 30
 SEQUENCE = 0
-ACK = 0
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -26,17 +29,13 @@ sock.settimeout(TIMEOUT)
 def log(string):
   sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
-def make_packet():
-  
-
 def send_next_packet():
   global SEQUENCE
 
-  data = sys.stdin.read(DATA_SIZE) #todo: read all data instead of just 1000
+  data = sys.stdin.read(DATA_SIZE)
   if (len(data) > 0):
-    
     msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}).encode("ascii")
-    SEQUENCE += 1
+    SEQUENCE += len(data)
 
     if sock.sendto(msg, dest) < len(msg):
       log("[error] unable to fully send packet")
@@ -45,8 +44,6 @@ def send_next_packet():
     return True
   else:
     return False
-
-#todo: do the syn/ack thing
 
 # Send first packet
 send_next_packet()
