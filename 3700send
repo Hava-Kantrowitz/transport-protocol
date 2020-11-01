@@ -1,4 +1,4 @@
-#!/usr/bin/python -u
+#!/usr/bin/python3 -u
 #
 # CS3700, Spring 2015
 # Project 2 Starter Code
@@ -34,7 +34,7 @@ def send_next_packet():
 
   data = sys.stdin.read(DATA_SIZE)
   if (len(data) > 0):
-    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False})
+    msg = json.dumps({"sequence": SEQUENCE, "data": data, "ack": False, "eof": False}).encode("ascii")
     SEQUENCE += len(data)
 
     if sock.sendto(msg, dest) < len(msg):
@@ -71,5 +71,5 @@ while True:
     log("[error] timeout")
     sys.exit(-1)
 
-sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}), dest)
+sock.sendto(json.dumps({"eof": True, "data": "", "sequence": SEQUENCE, "ack": False}).encode("ascii"), dest)
 sys.exit(0)
