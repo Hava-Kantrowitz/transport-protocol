@@ -2,17 +2,15 @@
 
 import sys
 import socket
-import time
 import datetime
-import select
 import math
 
 DATA_SIZE = 1440
-TIMEOUT = 30
 TIMEOUT_ACKS = 0.5
-SEQ = 0
+MAX_NO_ACK_RETRANS = 5
+SEQ = 1
 seq_nums = {}
-num_retrans = 0
+num_no_ack_retrans = 0
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -28,27 +26,17 @@ def log(string):
     sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
 def make_packet(data, num_pckts):
-    global SEQ
     pckt = SEQ.to_bytes(2, "little")
     pckt += num_pckts.to_bytes(2, "little")
-#    pckt += ACK.to_bytes(2, "little")
-#    pckt_len = len(data)
-#    pckt_len_flags = pckt_len << 4 | flags
- #   pckt += pckt_len.to_bytes(2, "little")
-#    pckt += WIN_SIZE.to_bytes(2, "little")
-#a word plus the data, 1472 - 32 = 1440 bytes of data 
     pckt += data.encode("ascii")
     return pckt
 
 def send_packets():
     global SEQ
-    #print("WE ARE IN SEND NEXT PACKET") 
-
-    data = sys.stdin.read() #todo: read all data instead of just 1000
+    data = sys.stdin.read()
     num_pckts = math.ceil(len(data) / DATA_SIZE)
     focusData = data
     if (len(data) > 0):
-
         while len(focusData) > DATA_SIZE:
             packet_data = ""
             for byte in range(0, DATA_SIZE): 
@@ -69,9 +57,9 @@ def send_packets():
             sock.sendto(msg, dest) 
             SEQ += 1
     
-        return True
     else:
-        return False
+        log("no data to send")
+        sys.exit(0)
 
 
 send_packets()
@@ -81,10 +69,14 @@ while True:
     log("ABOUT TO SLEEP")
     try:
         result = sock.recvfrom(DATA_SIZE)
+        num_no_ack_retrans = 0
 
         if result:
             (data, addr) = result
             decoded = int.from_bytes(data, "little")
+            if decoded == 0:
+                log("Receiver received all data - exiting")
+                sys.exit(0)
 
             #remove acked packet from dict
             if decoded in seq_nums.keys(): 
@@ -99,17 +91,13 @@ while True:
             sys.exit(-1)
 
     except OSError:
-        num_retrans += 1
-        if num_retrans >= 7:
-            log("retransmits exceeded, all data might have been received - exiting")
+        num_no_ack_retrans += 1
+        if num_no_ack_retrans >= MAX_NO_ACK_RETRANS:
+            log("no ack retransmits exceeded, all data might have been received - exiting")
             sys.exit(0)
  
         for seq_num in seq_nums.keys():
             log("[retransmit] " + str(seq_num))
             sock.sendto(seq_nums[seq_num], dest)
 
-#SEQ = 0
-#final_msg = SEQ.to_bytes(2, "little") 
-#log("SEND END") 
-#sock.sendto(final_msg, dest)
 sys.exit(0)
