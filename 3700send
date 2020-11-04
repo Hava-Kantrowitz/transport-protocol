@@ -5,16 +5,14 @@ import socket
 import time
 import datetime
 import select
-import json
+import math
 
-MSG_SIZE = 1500
-DATA_SIZE = 1000
-HEADER_SIZE = 8
+DATA_SIZE = 100
 TIMEOUT = 30
-SEQ = 1
-ACK = 0
-WIN_SIZE = 0
-seq_nums = []
+TIMEOUT_ACKS = 3
+SEQ = 0
+seq_nums = {}
+num_retrans = 0
 
 # Bind to localhost and an ephemeral port
 IP_PORT = sys.argv[1]
@@ -24,14 +22,15 @@ dest = (UDP_IP, UDP_PORT)
 
 # Set up the socket
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) 
-sock.settimeout(TIMEOUT)
+sock.settimeout(TIMEOUT_ACKS)
 
 def log(string):
     sys.stderr.write(datetime.datetime.now().strftime("%H:%M:%S.%f") + " " + string + "\n")
 
-def make_packet(data):
+def make_packet(data, num_pckts):
     global SEQ
     pckt = SEQ.to_bytes(2, "little")
+    pckt += num_pckts.to_bytes(2, "little")
 #    pckt += ACK.to_bytes(2, "little")
 #    pckt_len = len(data)
 #    pckt_len_flags = pckt_len << 4 | flags
@@ -41,72 +40,76 @@ def make_packet(data):
     pckt += data.encode("ascii")
     return pckt
 
-def send_next_packet():
+def send_packets():
     global SEQ
-    print("WE ARE IN SEND NEXT PACKET") 
+    #print("WE ARE IN SEND NEXT PACKET") 
 
     data = sys.stdin.read() #todo: read all data instead of just 1000
+    num_pckts = math.ceil(len(data) / DATA_SIZE)
     focusData = data
     if (len(data) > 0):
 
-        while len(focusData) > 1440:
-            packet_data = 0 
-            for byte in range(0, 1440): 
+        while len(focusData) > DATA_SIZE:
+            packet_data = ""
+            for byte in range(0, DATA_SIZE): 
                 packet_data = packet_data + focusData[byte] 
-                msg = make_packet(packet_data) 
-                print("SENDING", msg) 
-                SEQ += 1
-                seq_nums.append(SEQ) 
-                sock.sendto(msg, dest)
-                focusData = data[1440:]  
+                
+            msg = make_packet(packet_data, num_pckts) 
+            seq_nums[SEQ] = msg
+            log("[sending] " + str(SEQ))
+            sock.sendto(msg, dest)
+            SEQ += 1
+            focusData = data[DATA_SIZE:]
+            data = focusData
 
         if len(focusData) > 0: 
-            msg = make_packet(focusData) 
-            print("SENDING", msg) 
-            SEQ += 1
-            seq_nums.append(SEQ)
+            msg = make_packet(focusData, num_pckts) 
+            seq_nums[SEQ] = msg
+            log("[sending] " + str(SEQ))
             sock.sendto(msg, dest) 
+            SEQ += 1
     
-        '''
-        if sock.sendto(msg, dest) < len(msg):
-            log("[error] unable to fully send packet")
-        else:
-            log("[send data] " + str(SEQ) + " (" + str(len(data)) + ")")
-        '''
         return True
     else:
         return False
 
-#todo: do the syn/ack thing
 
-# Send first packet
-send_next_packet()
+send_packets()
 
 # Now read in data, send packets
 while True:
     log("ABOUT TO SLEEP")
-    result = sock.recvfrom(MSG_SIZE)
+    try:
+        result = sock.recvfrom(DATA_SIZE)
 
-    if result:
-        (data, addr) = result
-        decoded = int.from_bytes(data, "little")
+        if result:
+            (data, addr) = result
+            decoded = int.from_bytes(data, "little")
 
-        # If there is an ack, send next packet
-        if decoded in seq_nums: 
-            seq_nums.remove(decoded) 
-            log("[recv ack] " + str(decoded))
+            #remove acked packet from dict
+            if decoded in seq_nums.keys(): 
+                del seq_nums[decoded] 
+                log("[recv ack] " + str(decoded))
 
-        #3 second wait 
+            #if all acks received, break out
+            if len(seq_nums.keys()) == 0:
+                break
+        else:
+            log("[error] timeout")
+            sys.exit(-1)
 
-        # Try to send next packet; break if no more data
-        #if (not send_next_packet()):
-        break 
-    else:
-        log("[error] timeout")
-        sys.exit(-1)
+    except OSError:
+        num_retrans += 1
+        if num_retrans >= 7:
+            log("retransmits exceeded, all data might have been received - exiting")
+            sys.exit(0)
+ 
+        for seq_num in seq_nums.keys():
+            log("[retransmit] " + str(seq_num))
+            sock.sendto(seq_nums[seq_num], dest)
 
-SEQ = 0
-final_msg = SEQ.to_bytes(2, "little") 
-print("FINAL MSG IS", final_msg) 
-sock.sendto(final_msg, dest)
+#SEQ = 0
+#final_msg = SEQ.to_bytes(2, "little") 
+#log("SEND END") 
+#sock.sendto(final_msg, dest)
 sys.exit(0)
