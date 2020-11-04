@@ -64,7 +64,7 @@ def send_packets():
 
 send_packets()
 
-# Now read in data, send packets
+# Responding to ACKs and FINs
 while True:
     log("ABOUT TO SLEEP")
     try:
